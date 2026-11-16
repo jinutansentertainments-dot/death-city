@@ -1,0 +1,180 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Dead City: Last Escape</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#0b0f12;color:#dfe6dc;font:15px system-ui,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#0b0f12ee;padding:20px;text-align:center}
+.ov[hidden],#hud[hidden],#off[hidden]{display:none}
+h1{margin:0;font:900 44px Impact,'Arial Narrow',sans-serif;letter-spacing:4px;color:#c8372d}
+input,select,button{font:inherit;padding:12px 16px;border-radius:6px;border:1px solid #3a4440;background:#161c1a;color:inherit}
+input{text-transform:none;width:220px;text-align:center}#cd{width:130px;text-transform:uppercase;letter-spacing:3px}
+button{background:#c8372d;border-color:#c8372d;font-weight:700;min-width:130px}.row{display:flex;gap:8px}
+#err{color:#e0a526;min-height:1.2em;margin:0}#lt{font-size:36px;letter-spacing:6px;margin:0}
+#hud{position:fixed;inset:0;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+#hud *{pointer-events:none}#hud button,#joy{pointer-events:auto}
+.bar{width:150px;height:12px;background:#0008;border:1px solid #fff4;margin:5px 0}.bar i{display:block;height:100%;width:100%}
+#hp i{background:#3fa34d}#if i{background:#b8d400;width:0}
+#tl{position:absolute;left:12px;top:10px}#tr{position:absolute;right:12px;top:10px;text-align:right;max-width:46%;font-size:13px;text-shadow:0 1px 3px #000}
+#bt{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:13px;text-shadow:0 1px 3px #000}
+#toasts{position:absolute;left:0;right:0;top:70px;text-align:center;text-shadow:0 1px 3px #000}#toasts div{margin:2px 0;color:#e0a526}
+#vg{position:fixed;inset:0;box-shadow:inset 0 0 120px #6a8f00;opacity:0;pointer-events:none}
+#joy{position:absolute;left:24px;bottom:24px;width:140px;height:140px;border-radius:50%;background:#ffffff14;border:2px solid #fff3;touch-action:none}
+#knob{position:absolute;left:50px;top:50px;width:40px;height:40px;border-radius:50%;background:#fff5}
+.btns{position:absolute;right:20px;bottom:24px;display:grid;grid-template-columns:76px 76px;gap:10px}
+.btns button{min-width:0;height:64px;padding:0;border-radius:50%;background:#1c2420cc;border:2px solid #fff4}
+#bE{background:#c8372dcc}
+#off{position:fixed;top:0;left:0;right:0;background:#e0a526;color:#000;text-align:center;padding:6px;font-weight:700}
+label{display:block}input[type=range]{padding:0;width:220px}
+#bG{position:absolute;left:50%;top:8px;transform:translateX(-50%);min-width:0;padding:6px 10px;font-size:12px;opacity:.8}
+#mm{position:absolute;left:12px;top:80px;width:96px;height:96px;border:1px solid #fff4}
+</style></head><body>
+<canvas id=c></canvas><div id=vg></div>
+<div id=hud hidden>
+ <div id=tl><div id=tm></div><div class=bar id=hp><i></i></div><div class=bar id=if><i></i></div></div>
+ <div id=tr><div id=info></div><div id=obj></div></div>
+ <div id=toasts></div><div id=bt></div>
+ <button id=bG>Settings</button><canvas id=mm width=96 height=96></canvas><div id=joy><div id=knob></div></div>
+ <div class=btns><button id=bV>Cam</button><button id=bE>Use</button><button id=bA>Hit</button><button id=bH>Heal</button><button id=bR>Run</button></div>
+</div>
+<div id=menu class=ov><h1>DEAD CITY</h1><div>Last Escape. Online co-op survival.</div>
+ <input id=nm maxlength=14 placeholder="Your name"><button id=bC>Create room</button>
+ <div class=row><input id=cd maxlength=5 placeholder="Room code"><button id=bJ>Join</button></div>
+ <button id=bS>Settings</button><p id=err></p></div>
+<div id=set class=ov hidden><h2>Settings</h2><label>Graphics <select id=gq><option value=.6>Low<option value=1>Medium<option value=2>High</select></label><label>Look sensitivity <input type=range id=sn min=2 max=12></label><label>Camera distance <input type=range id=ds min=4 max=14></label><button id=bX>Close</button></div>
+<div id=lob class=ov hidden><h2 id=lt></h2><div id=lp></div>
+ <button id=iv>Invite friends</button><button id=st>Start game</button><div id=lw>Waiting for the host to start</div></div>
+<div id=off hidden>Connection lost. Reconnecting...</div>
+<script src=https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js></script>
+<script src=/socket.io/socket.io.js></script><script src=/shared.js></script>
+<script>
+const $=i=>document.getElementById(i),T=localStorage,sock=io(),cv=$('c');
+const tok=T.dcT||(T.dcT=Math.random().toString(36).slice(2)+Date.now().toString(36));
+let me,room=T.dcR||'',M={loot:[],car:{},state:'lobby'},inv={},snap=null,ents={},zm=[],lm=[],sp=0,yaw=0,pit=.6,jx=0,jy=0,keys={};
+$('nm').value=T.dcN||'';$('cd').value=(new URLSearchParams(location.search).get('room')||'').toUpperCase();
+// ---- networking ----
+function joined(r){if(r.err){$('err').textContent=r.err;room=T.dcR='';$('menu').hidden=0;$('hud').hidden=1;return}
+ room=T.dcR=r.code;me=r.id;$('menu').hidden=1;$('hud').hidden=0;ui()}
+function go(create){T.dcN=$('nm').value;sock.emit('join',{name:T.dcN||'Survivor',create,code:$('cd').value.trim(),token:tok},joined)}
+sock.on('connect',()=>{$('off').hidden=1;if(room)sock.emit('join',{name:T.dcN,code:room,token:tok},joined)});
+sock.on('disconnect',()=>$('off').hidden=0);
+$('bC').onclick=()=>go(1);$('bJ').onclick=()=>go(0);
+$('st').onclick=()=>sock.emit('start');
+$('iv').onclick=()=>{const u=location.origin+'/?room='+M.code;
+ navigator.share?navigator.share({title:'Dead City',text:'Join my Dead City room '+M.code,url:u}).catch(()=>{}):navigator.clipboard.writeText(u).then(()=>toast('Invite link copied'))};
+function toast(t){const d=document.createElement('div');d.textContent=t;$('toasts').append(d);setTimeout(()=>d.remove(),3500)}
+sock.on('n',toast);sock.on('i',v=>{inv=v;hud2()});
+function ui(){const s=M.state,L=$('lob');L.hidden=s==='playing'||!me;if(L.hidden)return;
+ $('lt').textContent=s==='over'?(M.end==='humans'?'Humans escaped!':'The city is lost'):'Room '+M.code;
+ $('lp').textContent=snap?snap.p.map(p=>p[1]+(p[8]?'':' (offline)')).join(', '):'';
+ $('st').hidden=$('lw').hidden=0;$('st').hidden=M.host!==me;$('lw').hidden=M.host===me;$('st').textContent=s==='over'?'Play again':'Start game'}
+setInterval(ui,1000);
+const COL={engine:0xff8800,tire:0x999999,battery:0xffee00,fuel:0xff2222,tools:0x00bbff,keys:0xffffff,med:0x33ff66};
+function hud2(){const g=Object.values(M.car).reduce((a,b)=>a+b,0)-(M.car.med||0);
+ $('obj').textContent=g<9?'Repair the car (beacon, E at car): '+Object.keys(S.NEED).map(k=>k+' '+M.car[k]+'/'+S.NEED[k]).join(', '):'Car repaired. Press Use at the car to escape!';
+ $('bt').textContent='Carrying: '+(Object.entries(inv).filter(e=>e[1]).map(e=>e[0]+' x'+e[1]).join(', ')||'nothing')}
+sock.on('m',m=>{M=m;lm.forEach(x=>scene.remove(x));lm=m.loot.map(l=>{const x=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,.7),new THREE.MeshBasicMaterial({color:COL[l[1]]}));x.position.set(l[2],.8,l[3]);scene.add(x);return x});
+ car.material.color.setHex(m.state==='over'&&m.end==='humans'?0x33aa44:0xb5521f);hud2();ui()});
+// ---- 3D scene ----
+const ren=new THREE.WebGLRenderer({canvas:cv,antialias:false}),scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(65,1,.1,220),mm=$('mm');
+const hemi=new THREE.HemisphereLight(0x8899bb,0x222222,.9),sun=new THREE.DirectionalLight(0xffeedd,.5),pl=new THREE.PointLight(0xffe0b0,1.1,28);
+sun.position.set(40,80,30);scene.add(hemi,sun,pl);scene.fog=new THREE.Fog(0x0b0f12,14,95);
+const NIGHT=new THREE.Color(0x070a0e),DAY=new THREE.Color(0x56606a),sky=new THREE.Color();scene.background=sky;
+let SN=+(T.dcSn||6),DS=+(T.dcDs||8),cm=+(T.dcCm||0);$('sn').value=SN;$('ds').value=DS;$('gq').value=T.dcGq||1;
+function size(){ren.setPixelRatio(Math.min(devicePixelRatio,+$('gq').value));ren.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+$('gq').onchange=()=>{T.dcGq=$('gq').value;size()};$('sn').oninput=()=>T.dcSn=SN=+$('sn').value;$('ds').oninput=()=>T.dcDs=DS=+$('ds').value;
+$('bS').onclick=$('bG').onclick=()=>$('set').hidden=0;$('bX').onclick=()=>$('set').hidden=1;addEventListener('resize',size);size();
+const box=(w,h,d,c,m)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m||new THREE.MeshLambertMaterial({color:c}));
+const rn=(()=>{let s=99;return()=>(s=(s*1664525+1013904223)>>>0)/4294967296})();
+// ground, roads
+const gr=box(220,.1,220,0x15181a);gr.position.y=-.05;scene.add(gr);
+for(const a of [-60,-20,20,60])for(const f of [0,1]){const r=f?box(200,.1,16,0x26292b):box(16,.1,200,0x26292b);r.position.set(f?0:a,0,f?a:0);scene.add(r)}
+// building facades: procedural window texture (some lit, some broken)
+const fc=document.createElement('canvas');fc.width=fc.height=64;
+{const k=fc.getContext('2d');k.fillStyle='#4a4f52';k.fillRect(0,0,64,64);
+ for(let y=0;y<4;y++)for(let x=0;x<4;x++){const q=rn();k.fillStyle=q<.1?'#c9a24a':q<.35?'#050607':'#1a2024';k.fillRect(x*16+3,y*16+3,10,11);
+  if(q>.35&&q<.5){k.strokeStyle='#4a4f52';k.beginPath();k.moveTo(x*16+3,y*16+3);k.lineTo(x*16+13,y*16+14);k.stroke()}}}
+const ft=new THREE.CanvasTexture(fc);ft.wrapS=ft.wrapT=THREE.RepeatWrapping;const roofM=new THREE.MeshLambertMaterial({color:0x222527});
+S.B.forEach((b,i)=>{const t=ft.clone();t.needsUpdate=true;t.repeat.set(b.w/16,b.h/16);
+ const s=new THREE.MeshLambertMaterial({map:t,color:0x888888+(i%4)*0x111111}),m=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),[s,s,roofM,roofM,s,s]);
+ m.position.set(b.x,b.h/2,b.z);scene.add(m)});
+// instanced props: abandoned cars (same positions as server colliders), rubble, streetlights
+const M4=new THREE.Matrix4(),Q=new THREE.Quaternion(),V=new THREE.Vector3(),SC=new THREE.Vector3(),YA=new THREE.Vector3(0,1,0),unit=new THREE.BoxGeometry(1,1,1),lam=new THREE.MeshLambertMaterial({color:0xffffff});
+function inst(mat,n,f){const m=new THREE.InstancedMesh(unit,mat,n);for(let i=0;i<n;i++){const o=f(i);M4.compose(V.set(o[0],o[1],o[2]),Q.setFromAxisAngle(YA,o[3]),SC.set(o[4],o[5],o[6]));m.setMatrixAt(i,M4);m.setColorAt(i,new THREE.Color(o[7]))}scene.add(m)}
+const CC=[0x7a2a22,0x2d4a6b,0x555a52,0x8a7a3a,0x3a3a3a,0x6b4a2a];
+inst(lam,S.C.length,i=>{const c=S.C[i];return[c.x,.6,c.z,0,c.w,.9,c.d,CC[c.col]]});
+inst(lam,S.C.length,i=>{const c=S.C[i];return[c.x,1.3,c.z,0,c.w*.85,.7,c.d*.5,0x1b1f22]});
+inst(lam,140,i=>{const p=S.street(rn);return[p.x+(rn()-.5)*6,.25,p.z+(rn()-.5)*6,rn()*3,.6+rn()*1.6,.3+rn()*.8,.6+rn()*1.6,0x555049+Math.floor(rn()*3)*0x0a0a0a]});
+const LP=[];for(const a of [-60,-20,20,60])for(const b of [-60,-20,20,60])LP.push([a+7,b+7]);
+inst(lam,16,i=>[LP[i][0],3,LP[i][1],0,.25,6,.25,0x333638]);
+inst(new THREE.MeshBasicMaterial({color:0xffffff}),16,i=>[LP[i][0],6.1,LP[i][1],0,.9,.3,.9,i%5?0xffd98a:0x222222]);
+// escape car + beacon
+const car=box(2.4,1,4.6,0xb5521f);car.position.set(S.CAR.x,.8,S.CAR.z);const cab=box(2,.8,2.2,0x222a30);cab.position.set(0,.85,-.2);car.add(cab);
+for(const[x,z]of[[-1.2,1.4],[1.2,1.4],[-1.2,-1.4],[1.2,-1.4]]){const w=box(.3,.8,.8,0x111111);w.position.set(x,-.4,z);car.add(w)}scene.add(car);
+const bc=box(.3,40,.3,0,new THREE.MeshBasicMaterial({color:0xffcc33}));bc.position.set(S.CAR.x,20,S.CAR.z);scene.add(bc);
+// human / zombie character with limbs
+function mkChar(sh,sk,zomb,name,px,pz){const g=new THREE.Group(),mt=c=>new THREE.MeshLambertMaterial({color:c});
+ const add=(w,h,d,c,x,y,z,par)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mt(c));m.position.set(x,y,z);(par||g).add(m);return m};
+ g.b=add(.7,.75,.4,sh,0,1.3,0);g.h=add(.4,.4,.4,sk,0,1.9,0);add(.42,.14,.42,0x2a1d14,0,2.12,0);
+ const lim=(x,y,c,w,l)=>{const p=new THREE.Group();p.position.set(x,y,0);g.add(p);p.m=add(w,l,w,c,0,-l/2+.05,0,p);return p};
+ g.l1=lim(-.18,.95,0x2b3140,.28,.9);g.l2=lim(.18,.95,0x2b3140,.28,.9);g.a1=lim(-.47,1.65,sh,.22,.75);g.a2=lim(.47,1.65,sh,.22,.75);
+ g.parts=[g.b,g.h,g.a1.m,g.a2.m];g.z=zomb;
+ if(name){const c=document.createElement('canvas');c.width=256;c.height=64;const k=c.getContext('2d');k.font='bold 34px sans-serif';k.fillStyle='#fff';k.textAlign='center';k.fillText(name,128,44);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));s.scale.set(3,.75,1);s.position.y=2.8;g.add(s)}
+ g.position.set(px,0,pz);g.tx=px;g.tz=pz;g.try=0;scene.add(g);return g}
+function setTeam(g,zt){if(g.zt===zt)return;g.zt=zt;g.z=zt;const c=zt?[0x4d5b34,0x7a9a50]:[0x3a6fb5,0xe0b090];
+ g.parts.forEach((m,i)=>m.material.color.setHex(i==1?c[1]:c[0]))}
+function anim(g,v,dt){g.ph=(g.ph||0)+v*dt*(g.z?.9:1.25);const a=Math.min(1,v/4)*.9,s=Math.sin(g.ph);g.l1.rotation.x=s*a;g.l2.rotation.x=-s*a;
+ if(g.z){g.a1.rotation.x=g.a2.rotation.x=-1.35+Math.sin(g.ph*.5)*.12;g.b.rotation.x=.12;g.rotation.z=s*.06*Math.min(1,v)}else{g.a1.rotation.x=-s*a;g.a2.rotation.x=s*a}}
+sock.on('s',d=>{snap=d;const ids={};
+ for(const[id,n,x,z,ry,hp,inf,zt,on]of d.p){ids[id]=1;const e=ents[id]||(ents[id]=mkChar(0x3a6fb5,0xe0b090,0,n,x,z));e.tx=x;e.tz=z;e.try=ry;e.rotation.x=on?0:-1.5;setTeam(e,zt);
+  if(id===me){$('hp').firstChild.style.width=hp+'%';$('if').firstChild.style.width=inf+'%';$('vg').style.opacity=Math.min(1,inf/100);$('tm').textContent=zt?'ZOMBIE: hunt the survivors':'Human survivor'}}
+ for(const id in ents)if(!ids[id]){scene.remove(ents[id]);delete ents[id]}
+ d.z.forEach((a,i)=>{const m=zm[i]||(zm[i]=mkChar(0x4d5b34,0x7a9a50,1,'',a[0],a[1]));m.tx=a[0];m.tz=a[1];m.try=a[2]});
+ const hu=d.p.filter(a=>!a[7]).length;$('info').textContent='Room '+M.code+', '+hu+' human, '+(d.p.length-hu)+' zombie'});
+// ---- cameras ----
+const CN=['Third person','First person','Front view','Cinematic','Free look'],tmp=new THREE.Vector3(),tmp2=new THREE.Vector3(),ctC=new THREE.Vector3(),fp=new THREE.Vector3(0,20,0);
+function cyc(){cm=(cm+1)%5;T.dcCm=cm;if(cm===4)fp.copy(cam.position);toast('Camera: '+CN[cm])}
+function orbit(p,a,el,d){let x,y,z;for(;d>2;d-=.7){const c=Math.cos(el)*d;x=p.x+Math.sin(a)*c;z=p.z+Math.cos(a)*c;y=1.6+Math.sin(el)*d;
+ if(!S.B.some(b=>Math.abs(x-b.x)<b.w/2+.6&&Math.abs(z-b.z)<b.d/2+.6&&y<b.h+.5))break}return tmp.set(x,y,z)}
+let last=performance.now(),mmT=0;
+(function loop(t){requestAnimationFrame(loop);const dt=Math.min(.1,(t-last)/1000),k=Math.min(1,dt*12);last=t;
+ const day=.5+.5*Math.sin(t/40000);sky.copy(NIGHT).lerp(DAY,day*.8);scene.fog.color.copy(sky);hemi.intensity=.35+.6*day;sun.intensity=.1+.5*day;
+ for(const e of [...Object.values(ents),...zm]){const ox=e.position.x,oz=e.position.z;e.position.x+=(e.tx-ox)*k;e.position.z+=(e.tz-oz)*k;
+  e.rotation.y+=(((e.try-e.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI)*k;e.v=(e.v||0)*.7+Math.hypot(e.position.x-ox,e.position.z-oz)/dt*.3;anim(e,e.v,dt)}
+ const e=ents[me];
+ if(e){const p=e.position,lp=(.6-pit)*1.2;e.visible=cm!==1;let want,wt=tmp2.set(p.x,1.6,p.z);
+  if(cm===0)want=orbit(p,yaw,pit,DS);
+  else if(cm===1){want=tmp.set(p.x,1.75,p.z);wt=tmp2.set(p.x-Math.sin(yaw)*Math.cos(lp)*10,1.75+Math.sin(lp)*10,p.z-Math.cos(yaw)*Math.cos(lp)*10)}
+  else if(cm===2)want=orbit(p,e.rotation.y,.3,Math.min(DS,5));
+  else if(cm===3){yaw+=(((e.rotation.y+Math.PI-yaw+Math.PI*3)%(Math.PI*2))-Math.PI)*dt*1.2;want=orbit(p,yaw,.28,DS+2)}
+  else{const s=Math.sin(yaw),c=Math.cos(yaw),x=jx+(keys.KeyD?1:0)-(keys.KeyA?1:0),y=jy+(keys.KeyW?1:0)-(keys.KeyS?1:0),cl=Math.cos(lp);
+   fp.x+=(-s*cl*y+c*x)*14*dt;fp.y=Math.max(1,Math.min(60,fp.y+Math.sin(lp)*y*14*dt));fp.z+=(-c*cl*y-s*x)*14*dt;
+   want=fp;wt=tmp2.set(fp.x-s*cl*10,fp.y+Math.sin(lp)*10,fp.z-c*cl*10)}
+  const kc=Math.min(1,dt*(cm===1?25:7)),fv=cm===3?52:cm===1?75:65;cam.position.lerp(want,kc);ctC.lerp(wt,kc);cam.lookAt(ctC);
+  if(Math.abs(cam.fov-fv)>.1){cam.fov+=(fv-cam.fov)*kc;cam.updateProjectionMatrix()}pl.position.set(p.x,3,p.z)}
+ if(t-mmT>250){mmT=t;const g=mm.getContext('2d'),q=ents[me];g.fillStyle='#0b0f12';g.fillRect(0,0,96,96);g.fillStyle='#3a4044';
+  for(const b of S.B)g.fillRect((b.x-b.w/2+100)*.48,(b.z-b.d/2+100)*.48,b.w*.48,b.d*.48);
+  g.fillStyle='#ff8800';g.fillRect((S.CAR.x+100)*.48-2,(S.CAR.z+100)*.48-2,5,5);
+  if(snap){g.fillStyle='#c33';for(const z of snap.z)if(q&&Math.hypot(z[0]-q.position.x,z[1]-q.position.z)<35)g.fillRect(z[0]*.48+46,z[1]*.48+46,3,3);
+   for(const a of snap.p){g.fillStyle=a[0]===me?'#fff':a[7]?'#7ccf3a':'#4aa3ff';g.fillRect(a[2]*.48+46,a[3]*.48+46,4,4)}}}
+ bc.visible=M.state!=='over';ren.render(scene,cam)})(last);
+// ---- controls ----
+setInterval(()=>{if(!me)return;let x=jx,y=jy;if(keys.KeyW)y++;if(keys.KeyS)y--;if(keys.KeyD)x++;if(keys.KeyA)x--;
+ const l=Math.hypot(x,y);if(l>1){x/=l;y/=l}const s=Math.sin(yaw),c=Math.cos(yaw);
+ sock.volatile.emit('in',cm===4?{mx:0,mz:0}:{mx:-s*y+c*x,mz:-c*y-s*x,sp:sp||keys.ShiftLeft})},50);
+const J=$('joy'),K=$('knob');let jid=null;
+function mv(e){const r=J.getBoundingClientRect(),R=r.width/2;let dx=(e.clientX-r.left-R)/R,dy=(e.clientY-r.top-R)/R;const l=Math.hypot(dx,dy);
+ if(l>1){dx/=l;dy/=l}jx=dx;jy=-dy;K.style.transform='translate('+dx*R*.6+'px,'+dy*R*.6+'px)'}
+J.onpointerdown=e=>{jid=e.pointerId;J.setPointerCapture(jid);mv(e)};J.onpointermove=e=>{if(e.pointerId===jid)mv(e)};
+J.onpointerup=J.onpointercancel=()=>{jid=null;jx=jy=0;K.style.transform=''};
+let dp=null,lx,ly;cv.onpointerdown=e=>{dp=e.pointerId;lx=e.clientX;ly=e.clientY;cv.setPointerCapture(dp)};
+cv.onpointermove=e=>{if(e.pointerId!==dp)return;yaw-=(e.clientX-lx)*SN*.001;pit=Math.max(.15,Math.min(1.2,pit+(e.clientY-ly)*SN*.00065));lx=e.clientX;ly=e.clientY};
+cv.onpointerup=cv.onpointercancel=()=>dp=null;
+const tap=(id,f)=>$(id).onpointerdown=e=>{e.preventDefault();f()};
+tap('bV',cyc);tap('bE',()=>sock.emit('act'));tap('bA',()=>sock.emit('atk'));tap('bH',()=>sock.emit('heal'));
+$('bR').onpointerdown=()=>sp=1;$('bR').onpointerup=$('bR').onpointerleave=()=>sp=0;
+addEventListener('keydown',e=>{keys[e.code]=1;if(e.code==='KeyE')sock.emit('act');if(e.code==='KeyF')sock.emit('atk');if(e.code==='KeyH')sock.emit('heal');if(e.code==='KeyC')cyc()});
+addEventListener('keyup',e=>keys[e.code]=0);
+</script></body></html>
